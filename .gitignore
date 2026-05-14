@@ -1,0 +1,32 @@
+# Personal data — never commit these
+pipeline.db
+recipe_vault.db
+*.db
+
+# Raindrop exports
+export.csv
+export_ddc.csv
+
+# Vault content — your personal files stay local
+rtf-to-md/
+vault/
+fetched/
+exports/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# macOS
+.DS_Store
+.thumbs/
+*.tags.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
