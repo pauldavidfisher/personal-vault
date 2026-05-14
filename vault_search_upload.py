@@ -583,11 +583,10 @@ def api_upload():
         text = s.strip()
     elif ext == '.pdf':
         try:
-            import tempfile, os, subprocess, io as _io
-            # Step 1: PyMuPDF — best for text-based PDFs
+            # PyMuPDF — handles text-based PDFs
             text = ''
             try:
-                import fitz  # PyMuPDF
+                import fitz
                 doc = fitz.open(stream=raw, filetype='pdf')
                 pages_text = []
                 for page in doc:
@@ -597,46 +596,27 @@ def api_upload():
                 doc.close()
                 text = '\n\n'.join(pages_text).strip()
             except ImportError:
-                pass
-            except Exception:
-                pass
-            # Step 2: pdftotext fallback (poppler — brew install poppler)
+                text = '(PyMuPDF not installed. Run: pip3 install pymupdf --break-system-packages)'
+            except Exception as e:
+                text = f'(PDF extraction error: {e})'
+            # Optional: pdftotext fallback for PDFs PyMuPDF can't parse
             if not text:
-                try:
-                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-                        tmp.write(raw)
-                        tmp_path = tmp.name
-                    r2 = subprocess.run(['pdftotext', tmp_path, '-'],
-                        capture_output=True, text=True, timeout=30)
-                    os.unlink(tmp_path)
-                    text = r2.stdout.strip()
-                except Exception:
-                    pass
-            # Step 3: tesseract OCR for scanned/image PDFs
+                import shutil, subprocess, tempfile, os
+                if shutil.which('pdftotext'):
+                    try:
+                        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                            tmp.write(raw)
+                            tmp_path = tmp.name
+                        r2 = subprocess.run(['pdftotext', tmp_path, '-'],
+                            capture_output=True, text=True, timeout=30)
+                        os.unlink(tmp_path)
+                        text = r2.stdout.strip()
+                    except Exception:
+                        pass
             if not text:
-                try:
-                    import fitz
-                    doc = fitz.open(stream=raw, filetype='pdf')
-                    ocr_texts = []
-                    for page_num, page in enumerate(doc):
-                        mat = fitz.Matrix(2, 2)  # 2x zoom = ~144dpi
-                        pix = page.get_pixmap(matrix=mat)
-                        img_bytes = pix.tobytes('png')
-                        r_ocr = subprocess.run(
-                            ['tesseract', 'stdin', 'stdout', '--dpi', '144', '-l', 'eng'],
-                            input=img_bytes, capture_output=True, timeout=60
-                        )
-                        if r_ocr.stdout:
-                            t = r_ocr.stdout.decode('utf-8', errors='ignore').strip()
-                            if t:
-                                ocr_texts.append(f'[Page {page_num+1}]\n{t}')
-                    doc.close()
-                    if ocr_texts:
-                        text = '[OCR]\n\n' + '\n\n'.join(ocr_texts)
-                except Exception:
-                    pass
-            if not text:
-                text = '(No text extracted. Install: pip3 install pymupdf --break-system-packages)'
+                text = ('(No text found in this PDF — it may be a scanned document.)\n\n'
+                        'To enable OCR for scanned PDFs, install tesseract:\n'
+                        '  brew install tesseract  (requires macOS 14+)')
         except Exception as e:
             return jsonify({'error': f'PDF conversion failed: {e}'}), 400
     else:
