@@ -245,6 +245,19 @@ def api_folder_files():
                 if stripped and len(stripped) > 3:
                     title = stripped[:80]
                     break
+        # Clean up title — strip markdown bold/italic, backslashes, URLs
+        import re as _re
+        title = _re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'', title)  # **bold** -> bold
+        title = _re.sub(r'_{1,2}([^_]+)_{1,2}', r'', title)    # __italic__ -> italic
+        title = title.rstrip('\\').strip()                          # trailing backslash
+        if title.startswith('http://') or title.startswith('https://'):
+            # URL as title - use domain + path truncated
+            try:
+                from urllib.parse import urlparse as _up
+                p = _up(title)
+                title = (p.netloc + p.path)[:60] or title[:60]
+            except Exception:
+                title = title[:60]
         rel = safe_rel(path)
         results.append({
             'filename': path.name,
@@ -1463,32 +1476,52 @@ mark {
 }
 .bm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
   margin-bottom: 24px;
 }
 .bm-card {
   background: white;
   border: 1px solid var(--paper3);
-  border-radius: 4px;
-  padding: 10px 12px;
-  transition: box-shadow .15s;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: box-shadow .15s, border-color .15s;
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
-.bm-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.bm-card:hover { box-shadow: 0 3px 14px rgba(0,0,0,.1); border-color: var(--accent2); }
+.bm-cover {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+  background: var(--paper2);
+}
+.bm-cover-placeholder {
+  width: 100%;
+  height: 6px;
+  background: var(--accent2);
+  display: block;
+}
+.bm-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
 .bm-title {
   font-family: var(--serif);
-  font-size: .83rem;
+  font-size: .88rem;
   color: var(--ink);
-  line-height: 1.3;
+  line-height: 1.35;
   text-decoration: none;
+  font-weight: 700;
 }
 .bm-title:hover { color: var(--accent); }
 .bm-meta {
   font-family: var(--mono);
-  font-size: .65rem;
+  font-size: .63rem;
   color: var(--ink3);
   display: flex;
   gap: 6px;
@@ -1501,16 +1534,26 @@ mark {
   border-radius: 3px;
   padding: 1px 5px;
   color: var(--accent);
-  font-size: .62rem;
+  font-size: .6rem;
 }
 .bm-excerpt {
   font-size: .75rem;
   color: var(--ink2);
-  line-height: 1.5;
+  line-height: 1.55;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.bm-note {
+  font-size: .73rem;
+  color: var(--ink);
+  font-style: italic;
+  background: var(--paper2);
+  border-left: 2px solid var(--accent2);
+  padding: 4px 8px;
+  border-radius: 0 3px 3px 0;
+  line-height: 1.45;
 }
 .bm-tags {
   display: flex;
@@ -1519,7 +1562,7 @@ mark {
   margin-top: 2px;
 }
 .bm-tag {
-  padding: 1px 5px;
+  padding: 1px 6px;
   background: var(--paper2);
   border-radius: 6px;
   font-size: .6rem;
@@ -2178,37 +2221,25 @@ async function loadBookmarkFolders() {
 }
 
 async function browseBookmarks(ddc, label) {
-  document.getElementById('main').innerHTML = '<div class="loading">Loading…</div>';
-  // Clear search state
+  document.getElementById('main').innerHTML = '<div class="loading">Loading...</div>';
   lastQuery = '';
   document.getElementById('search-input').value = '';
-  const bookmarks = await(await fetch(`/api/bookmark-browse?ddc=${encodeURIComponent(ddc)}`)).json();
+  const bookmarks = await(await fetch('/api/bookmark-browse?ddc=' + encodeURIComponent(ddc))).json();
   const main = document.getElementById('main');
   if (!bookmarks.length) {
-    main.innerHTML = `<div class="welcome"><h2>No bookmarks</h2><p>No bookmarks found for ${esc(label)}.</p></div>`;
+    main.innerHTML = '<div class="welcome"><h2>No bookmarks</h2><p>No bookmarks found for ' + esc(label) + '.</p></div>';
     return;
   }
-  const cards = bookmarks.map(b => {
-    const tags = (b.tags || '').split(',').map(t => t.trim())
-      .filter(t => t && !t.startsWith('ddc:')).slice(0, 5)
-      .map(t => `<span class="bm-tag">${esc(t)}</span>`).join('');
-    const excerpt = b.excerpt ? `<div class="bm-excerpt">${esc(b.excerpt)}</div>` : '';
-    const date = b.created ? new Date(b.created).toLocaleDateString('en-US',{year:'numeric',month:'short'}) : '';
-    return `<div class="bm-card">
-      <a class="bm-title" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.title || b.url)}</a>
-      <div class="bm-meta"><span>${esc(b.domain || '')}</span>${date ? '<span>'+date+'</span>' : ''}</div>
-      ${excerpt}
-      ${tags ? `<div class="bm-tags">${tags}</div>` : ''}
-    </div>`;
-  }).join('');
-  main.innerHTML = `
-    <div class="status-bar">
-      <div class="result-count"><strong>${bookmarks.length}</strong> bookmark${bookmarks.length!==1?'s':''}</div>
-      <div class="query-echo">${esc(ddc)} — ${esc(label)}</div>
-    </div>
-    <div class="bm-section-head">🔖 ${esc(label)}</div>
-    <div class="bm-grid">${cards}</div>`;
+  var cards = bookmarks.map(function(b) { return buildBmCard(b); }).join('');
+  main.innerHTML =
+    '<div class="status-bar">' +
+      '<div class="result-count"><strong>' + bookmarks.length + '</strong> bookmark' + (bookmarks.length!==1?'s':'') + '</div>' +
+      '<div class="query-echo">' + esc(ddc) + ' &mdash; ' + esc(label) + '</div>' +
+    '</div>' +
+    '<div class="bm-section-head">&#128278; ' + esc(label) + '</div>' +
+    '<div class="bm-grid">' + cards + '</div>';
 }
+
 
 // ── Search ────────────────────────────────────────────────────────────────
 async function doSearch() {
@@ -2244,11 +2275,12 @@ async function filterFolder(folder) {
   // No search active — show file cards for the folder
   if (!folder) {
     // All folders selected with no search — show welcome
-    document.getElementById('main').innerHTML = `<div class="welcome">
-      <h2>"Manners are of more importance than laws."</h2>
-      <p>Search across every note, essay, quote, and converted document in your vault.</p>
-      <div class="hint">Press Enter to search</div>
-    </div>`;
+    document.getElementById('main').innerHTML =
+      '<div class="welcome">' +
+      '<h2>&ldquo;Manners are of more importance than laws.&rdquo;</h2>' +
+      '<p>Search across every note, essay, quote, and converted document in your vault.</p>' +
+      '<div class="hint">Press Enter to search</div>' +
+      '</div>';
     return;
   }
   document.getElementById('main').innerHTML = '<div class="loading">Loading...</div>';
@@ -2297,24 +2329,36 @@ function renderClipsSection(clips, query) {
     '<div style="margin-bottom:16px">' + cards + '</div>';
 }
 
+function buildBmCard(b) {
+  var tags = (b.tags || '').split(',').map(function(t) { return t.trim(); })
+    .filter(function(t) { return t && !t.startsWith('ddc:'); })
+    .slice(0, 5)
+    .map(function(t) { return '<span class="bm-tag">' + esc(t) + '</span>'; }).join('');
+  var ddc = b.ddc_code ? '<span class="bm-ddc">' + esc(b.ddc_code) + '</span>' : '';
+  var domain = esc(b.domain || '');
+  var date = b.created ? new Date(b.created).toLocaleDateString('en-US', {year:'numeric', month:'short'}) : '';
+  var cover = b.cover
+    ? '<img class="bm-cover" src="' + esc(b.cover) + '" loading="lazy" alt="">'
+    : '<div class="bm-cover-placeholder"></div>';
+  var excerpt = b.excerpt ? '<div class="bm-excerpt">' + esc(b.excerpt) + '</div>' : '';
+  var note = b.note ? '<div class="bm-note">' + esc(b.note) + '</div>' : '';
+  return '<div class="bm-card">' +
+    cover +
+    '<div class="bm-body">' +
+      '<a class="bm-title" href="' + esc(b.url) + '" target="_blank" rel="noopener">' + esc(b.title || b.url) + '</a>' +
+      '<div class="bm-meta">' + ddc + '<span>' + domain + '</span>' + (date ? '<span>' + date + '</span>' : '') + '</div>' +
+      excerpt +
+      note +
+      (tags ? '<div class="bm-tags">' + tags + '</div>' : '') +
+    '</div>' +
+    '</div>';
+}
+
 function renderBookmarks(bookmarks, query) {
   if (!bookmarks || !bookmarks.length) return '';
-  const cards = bookmarks.map(b => {
-    const tags = (b.tags || '').split(',')
-      .map(t => t.trim()).filter(t => t && !t.startsWith('ddc:'))
-      .slice(0, 6)
-      .map(t => `<span class="bm-tag">${esc(t)}</span>`).join('');
-    const ddc = b.ddc_code ? `<span class="bm-ddc">${esc(b.ddc_code)}</span>` : '';
-    const excerpt = b.excerpt ? `<div class="bm-excerpt">${esc(b.excerpt)}</div>` : '';
-    return `<div class="bm-card">
-      <a class="bm-title" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.title || b.url)}</a>
-      <div class="bm-meta">${ddc}<span>${esc(b.domain || '')}</span>${b.ddc_label ? '<span>'+esc(b.ddc_label)+'</span>' : ''}</div>
-      ${excerpt}
-      ${tags ? `<div class="bm-tags">${tags}</div>` : ''}
-    </div>`;
-  }).join('');
-  return `<div class="bm-section-head">🔖 ${bookmarks.length} bookmark${bookmarks.length!==1?'s':''} matching "${esc(query)}"</div>
-    <div class="bm-grid">${cards}</div>`;
+  var cards = bookmarks.map(function(b) { return buildBmCard(b); }).join('');
+  return '<div class="bm-section-head">&#128278; ' + bookmarks.length + ' bookmark' + (bookmarks.length!==1?'s':'') + ' matching &ldquo;' + esc(query) + '&rdquo;</div>' +
+    '<div class="bm-grid">' + cards + '</div>';
 }
 
 function renderResults(results, meta, bookmarks, clips) {
