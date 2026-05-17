@@ -4,6 +4,8 @@
 
 Personal Vault is a self-hosted web app that turns your browser into a reading and curation tool. Fetch any text from the web, highlight the passages that matter, add your own notes, and build a searchable library that is entirely yours — no cloud, no subscription, no lock-in.
 
+**[→ Live Demo](https://personal-vault-starter.onrender.com)**
+
 ---
 
 ![Personal Vault welcome screen](https://raw.githubusercontent.com/pauldavidfisher/personal-vault/main/assets/images/screenshot-welcome.png)
@@ -84,6 +86,7 @@ Import a Raindrop.io export and your bookmarks are automatically classified usin
 - **PDF extraction** — text extracted via PyMuPDF
 - **Scope filtering** — search All, Vault only, or Bookmarks only
 - **Config file** — single `config.yaml` to configure vault path, port, and app name
+- **Logo click** — clicking the app name always returns to the home screen
 
 ---
 
@@ -142,13 +145,6 @@ app:
   name: Personal Vault
   welcome_quote: "Manners are of more importance than laws."
   welcome_quote_author: Edmund Burke
-```
-
-### Optional — import bookmarks
-
-```bash
-python3 raindrop_ddc.py --input export.csv --output export_ddc.csv
-python3 bookmarks_index.py --input export_ddc.csv
 ```
 
 ---
